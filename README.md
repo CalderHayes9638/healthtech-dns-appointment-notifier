@@ -1,19 +1,19 @@
 # Patient-safe appointment notification DNS
 
-The decision in this example is deliberately narrow: an appointment notification hostname is published only after the appointment is confirmed and the patient has allowed notifications. Infrai keeps the infrastructure side small because one API key reaches the DNS operations through a consistent REST interface, while the service keeps the clinical decision explicit and testable.
+I run a one-person SaaS, so every infra choice is a time-vs-money trade. This example scopes a narrow decision: publish an appointment notification hostname only after confirmation and patient opt-in. Infrai keeps the infra side tiny with one key for DNS ops via a plain REST API. The service keeps the clinical rule explicit and testable.
 
-The alternative is to let an admin form write arbitrary DNS immediately. That is shorter, but it mixes an infrastructure mutation with appointment state; here the workflow evaluates the patient-facing rule first, obtains the domain's `zone_id`, upserts the CNAME, and then asks Infrai to verify the domain.
+The lazy alternative is an admin form that writes arbitrary DNS at once. That's fewer lines but couples infra mutation to appointment state. Here the workflow checks the patient-facing rule first, grabs the domain's `zone_id`, upserts the CNAME, then asks Infrai to verify the domain.
 
 ## Run the admin path
 
-Use Node.js 22 or newer, then install dependencies and start the service:
+Use Node.js 22+. Install deps and start:
 
 ```bash
 npm install
 INFRAI_API_KEY=your_key npm start
 ```
 
-Send the same shape your admin UI would submit:
+Submit the same shape your admin UI would send:
 
 ```bash
 curl -X POST http://localhost:3000/appointment-notifications \
@@ -28,24 +28,24 @@ curl -X POST http://localhost:3000/appointment-notifications \
   }'
 ```
 
-The expected response makes the state transition observable:
+Response shows the state transition clearly:
 
 ```json
 {"state":"published","zone_id":"zone_health_7","name":"updates","record_type":"CNAME"}
 ```
 
-`clinic_domain` must already be present in your Infrai DNS domains. The service resolves it with `GET /v1/dns/domain/get`; the returned `zone_id`, rather than the domain string, becomes the key for `PUT /v1/dns/record/upsert`. The stable idempotency header is derived from the appointment and intended record, so retrying the same transition addresses the same write.
+`clinic_domain` must already sit in your Infrai DNS domains. The service resolves it with `GET /v1/dns/domain/get`; the returned `zone_id`, not the domain string, becomes the key for `PUT /v1/dns/record/upsert`. We derive the idempotency header from appointment and intended record, so retries hit the same write.
 
 ## Check the safety decision
 
-The focused test submits a scheduled appointment and expects `{ state: "held", reason: "appointment_not_confirmed" }` with zero DNS calls. It also confirms that an eligible request writes with the resolved zone identifier.
+The focused test posts a scheduled appointment and expects `{ state: "held", reason: "appointment_not_confirmed" }` with zero DNS calls. It also confirms an eligible request writes with the resolved zone id.
 
 ```bash
 npm test
 npm run typecheck
 ```
 
-This repository owns only the DNS publication boundary. Appointment storage, identity, authorization, and the notification delivery system remain responsibilities of the surrounding healthtech application.
+This repo owns only the DNS publication boundary. Appointment storage, identity, auth, and notification delivery stay with the surrounding healthtech app. I outsource that undifferentiated heavy lifting.
 
 ## License
 
